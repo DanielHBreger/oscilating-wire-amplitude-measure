@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 import threading
 import queue
 import math
+import time
 
 filename = 'IMG_3128.MOV'
-sample_rate = 60
+sample_rate = 1
 video = cv2.VideoCapture(filename)
 total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 x,y,wi,h = 1600, 1000, 1500, 300
@@ -52,41 +53,48 @@ class Worker(threading.Thread):
                     break
             callback(fno, maxy[1]-miny[1])
 
-fnos = list(range(0,total_frames,sample_rate))
-num_threads = 8
-tasks = [[] for _ in range(0, num_threads)]
-frames_per_thread = math.ceil(len(fnos)/num_threads)
-tid=0
-for idx, fno in enumerate(fnos):
-    tasks[math.floor(idx/frames_per_thread)].append(fno)
 
-threads = []
-for _ in range(0, num_threads):
-    w = Worker()
-    threads.append(w)
-    w.start()
 
-results = queue.Queue(maxsize=2000)
-on_done = lambda x,y: results.put((x,y))
+def main():
+    fnos = list(range(0,total_frames,sample_rate))
+    num_threads = 20
+    tasks = [[] for _ in range(0, num_threads)]
+    frames_per_thread = math.ceil(len(fnos)/num_threads)
+    for idx, fno in enumerate(fnos):
+        tasks[math.floor(idx/frames_per_thread)].append(fno)
 
-ids = []
-widths = []
-frequencies = []
+    threads = []
+    for _ in range(0, num_threads):
+        w = Worker()
+        threads.append(w)
+        w.start()
 
-for idx, w in enumerate(threads):
-    w.measure(filename, tasks[idx], on_done)
+    results = queue.Queue(maxsize=2000)
+    on_done = lambda x,y: results.put((x,y))
 
-while True:
-    result = results.get(timeout=5)
-    print(result)
-    id, amp = result
-    ids.append(id)
-    widths.append(amp)
-    if len(ids) >= total_frames/sample_rate:
-        break
+    ids = []
+    widths = []
+    frequencies = []
 
-plt.plot(ids, widths, marker='.', linestyle='none')
-plt.xlabel('Frequency (s)')
-plt.ylabel('Pixels')
-plt.grid(True)
-plt.show()
+    for idx, w in enumerate(threads):
+        w.measure(filename, tasks[idx], on_done)
+
+    while True:
+        result = results.get(timeout=5)
+        id, amp = result
+        ids.append(id)
+        widths.append(amp)
+        if len(ids) >= total_frames/sample_rate:
+            break
+
+    plt.plot(ids, widths, marker='.', linestyle='none')
+    plt.xlabel('Frequency (s)')
+    plt.ylabel('Pixels')
+    plt.grid(True)
+    plt.savefig(f'{filename}-AMPS-{time.strftime("%Y%m%d-%H%M%S")}.png')
+    # plt.show()
+
+if __name__ == '__main__':
+    start_time = time.time()
+    main()
+    print("--- %s seconds ---" % (time.time() - start_time))
